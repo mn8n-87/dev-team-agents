@@ -1,4 +1,8 @@
-"""All four Agent Span agents, wired into a pipeline via conductor-agent-sdk."""
+"""All four Agent Span agents, wired into a pipeline via conductor-agent-sdk.
+
+The LLM calls run on the Agentspan server (so it needs the provider API key);
+the tools run in this process, against AGENT_WORKDIR.
+"""
 import os
 from conductor.ai.agents import Agent
 from agent_span.tools import (
@@ -8,7 +12,7 @@ from agent_span.tools import (
     REVIEWER_TOOLS,
 )
 
-MODEL = os.getenv("AGENT_MODEL", "anthropic/claude-sonnet-4-20250514")
+MODEL = os.getenv("AGENT_MODEL", "anthropic/claude-sonnet-5-5")
 
 
 researcher = Agent(
@@ -110,4 +114,18 @@ Output format:
 
 # Pipeline: researcher → planner → coder → reviewer
 # Each agent's output becomes the next agent's input automatically.
-dev_team = researcher >> planner >> coder >> reviewer
+dev_team = Agent(
+    name="dev_team",
+    model=MODEL,
+    agents=[researcher, planner, coder, reviewer],
+    strategy="sequential",
+    instructions="Software development team: research, plan, implement, then review a task.",
+)
+
+AGENTS = {
+    "researcher": researcher,
+    "planner": planner,
+    "coder": coder,
+    "reviewer": reviewer,
+    "pipeline": dev_team,
+}

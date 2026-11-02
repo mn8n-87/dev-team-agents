@@ -1,52 +1,62 @@
 """Unit tests for the shared tools (no LLM / no API calls)."""
 import os
-import tempfile
 import pytest
-from unittest.mock import patch
 
 
-def test_read_file_success(tmp_path):
-    f = tmp_path / "hello.txt"
-    f.write_text("hello world")
-    # Import here so conductor doesn't need to be running
-    from agent_span.tools import read_file
+@pytest.fixture(autouse=True)
+def project(tmp_path, monkeypatch):
+    """Point the tools at a temporary project directory."""
+    monkeypatch.setenv("AGENT_WORKDIR", str(tmp_path))
+    return tmp_path
+
+
+def _fn(tool):
     # tools are decorated — call the underlying function via __wrapped__ if present
-    fn = getattr(read_file, "__wrapped__", read_file)
-    result = fn(str(f))
+    return getattr(tool, "__wrapped__", tool)
+
+
+def test_read_file_success(project):
+    (project / "hello.txt").write_text("hello world")
+    from agent_span.tools import read_file
+    result = _fn(read_file)("hello.txt")
     assert "hello world" in result
 
 
 def test_read_file_missing():
     from agent_span.tools import read_file
-    fn = getattr(read_file, "__wrapped__", read_file)
-    result = fn("/nonexistent/path/file.txt")
+    result = _fn(read_file)("nonexistent/file.txt")
     assert "not found" in result.lower() or "error" in result.lower()
 
 
-def test_list_files(tmp_path):
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "main.py").write_text("")
-    (tmp_path / "README.md").write_text("")
+def test_list_files(project):
+    (project / "src").mkdir()
+    (project / "src" / "main.py").write_text("")
+    (project / "README.md").write_text("")
     from agent_span.tools import list_files
-    fn = getattr(list_files, "__wrapped__", list_files)
-    result = fn(str(tmp_path))
+    result = _fn(list_files)()
     assert "main.py" in result
     assert "README.md" in result
 
 
-def test_write_file(tmp_path):
+def test_write_file(project):
     from agent_span.tools import write_file
-    fn = getattr(write_file, "__wrapped__", write_file)
-    target = str(tmp_path / "sub" / "new.py")
-    result = fn(target, "print('hi')")
+    result = _fn(write_file)("sub/new.py", "print('hi')")
     assert "Written" in result
+    target = project / "sub" / "new.py"
     assert os.path.exists(target)
-    assert open(target).read() == "print('hi')"
+    assert target.read_text() == "print('hi')"
 
 
-def test_search_code(tmp_path):
-    (tmp_path / "app.py").write_text("def healthz():\n    return 'ok'\n")
+def test_search_code(project):
+    (project / "app.py").write_text("def healthz():\n    return 'ok'\n")
     from agent_span.tools import search_code
-    fn = getattr(search_code, "__wrapped__", search_code)
-    result = fn("healthz", str(tmp_path))
+    result = _fn(search_code)("healthz")
+    assert "app.py" in result
     assert "healthz" in result
+
+
+@pytest.mark.parametrize("path", ["../outside.txt", "/etc/passwd"])
+def test_paths_outside_project_are_rejected(path):
+    from agent_span.tools import read_file, write_file
+    assert "outside the project" in _fn(read_file)(path)
+    assert "outside the project" in _fn(write_file)(path, "x")

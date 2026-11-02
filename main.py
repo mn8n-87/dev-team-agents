@@ -14,34 +14,37 @@ Usage:
     # Stream output token by token
     python main.py --stream "Add a /healthz endpoint"
 
+    # Work on another project (default: AGENT_WORKDIR or the current directory)
+    python main.py --workdir ~/dev/my-app "Add a /healthz endpoint"
+
+    # Register all agents on the Agentspan server (shows them in the dashboard)
+    python main.py deploy
+
+    # Keep the team's tool workers online so runs started from the dashboard work
+    python main.py serve
+
 Prerequisites:
     1. pip install -e ".[dev]"
-    2. cp .env.example .env  →  fill in your API key
-    3. agentspan server start   (in a separate terminal)
+    2. cp .env.example .env  →  set CONDUCTOR_SERVER_URL and AGENT_MODEL
+    3. An Agentspan server with your LLM provider key (e.g. the agentspan Docker container)
 """
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from dotenv import load_dotenv
 
 load_dotenv()
+os.environ.setdefault("CONDUCTOR_SERVER_URL", "http://localhost:6767/api")
 
 from conductor.ai.agents import AgentRuntime
-from agent_span.agents import dev_team, researcher, planner, coder, reviewer
-
-AGENTS = {
-    "researcher": researcher,
-    "planner": planner,
-    "coder": coder,
-    "reviewer": reviewer,
-    "pipeline": dev_team,
-}
+from agent_span.team import AGENTS
+from agent_span.tools import workdir
 
 
 def run(task: str, agent_name: str = "pipeline", stream: bool = False) -> None:
     agent = AGENTS[agent_name]
-    print(f"\n🚀  Agent Span — running [{agent_name}]\n{'─' * 60}")
+    print(f"\n🚀  Agent Span — running [{agent_name}] in {workdir()}\n{'─' * 60}")
 
     with AgentRuntime() as runtime:
         if stream:
@@ -60,6 +63,18 @@ def run(task: str, agent_name: str = "pipeline", stream: bool = False) -> None:
             result.print_result()
 
 
+def deploy() -> None:
+    with AgentRuntime() as runtime:
+        for info in runtime.deploy(*AGENTS.values()):
+            print(f"✅  Deployed {info}")
+
+
+def serve() -> None:
+    print(f"🛠️  Serving Agent Span tools for {workdir()} — Ctrl+C to stop")
+    with AgentRuntime() as runtime:
+        runtime.serve(*AGENTS.values())
+
+
 def main() -> None:
     args = sys.argv[1:]
     if not args:
@@ -68,6 +83,21 @@ def main() -> None:
 
     stream = False
     agent_name = "pipeline"
+
+    if "--workdir" in args:
+        idx = args.index("--workdir")
+        if idx + 1 >= len(args):
+            print("Error: --workdir requires a path")
+            sys.exit(1)
+        os.environ["AGENT_WORKDIR"] = os.path.expanduser(args[idx + 1])
+        args = args[:idx] + args[idx + 2:]
+
+    if args == ["deploy"]:
+        deploy()
+        return
+    if args == ["serve"]:
+        serve()
+        return
 
     if "--stream" in args:
         stream = True

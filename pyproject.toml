@@ -6,10 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "agent-span"
 version = "0.2.0"
 description = "A team of AI agents for software development, powered by conductor-agent-sdk"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "conductor-agent-sdk",
     "python-dotenv",
+    "claude-agent-sdk",
+    "rich",
 ]
 
 [project.optional-dependencies]
@@ -20,3 +22,5 @@ line-length = 100
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# conductor-agent-sdk registers its pytest plugin under two names; load it once
+addopts = "-p no:agentspan-testing"

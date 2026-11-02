@@ -19,38 +19,39 @@ Agents run as durable server-side executions — if your process crashes, the se
 
 ## Setup
 
-### 1. Install the Agentspan CLI
+### 1. Start the Agentspan server in Docker
+
+The LLM calls run on the server, so it needs your provider key:
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/agentspan-ai/agentspan/main/cli/install.sh | sh
-
-# or via npm
-npm install -g @agentspan-ai/agentspan
+docker run -d --name agentspan --restart unless-stopped -p 6767:6767 \
+  -v agentspan_data:/data -e ANTHROPIC_API_KEY=your-key agentspan/server:latest
+# Visual UI at http://localhost:6767
 ```
 
 ### 2. Install Python dependencies
 
+`conductor-agent-sdk` needs Python 3.10–3.13 (not 3.14):
+
 ```bash
 cd dev-team-agents
-python3 -m venv .venv
+uv venv --python 3.13 .venv      # or: python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### 3. Configure your API key
+### 3. Configure
 
 ```bash
 cp .env.example .env
-# Edit .env — set ANTHROPIC_API_KEY (or OPENAI_API_KEY) and AGENT_MODEL
+# Edit .env — set AGENT_MODEL, CONDUCTOR_SERVER_URL and, optionally, AGENT_WORKDIR
 ```
 
-### 4. Start the Conductor server
+### 4. Register the team on the server
 
 ```bash
-# In a separate terminal
-agentspan server start
-# Opens the visual UI at http://localhost:6767
+python main.py deploy   # agents appear under Definitions → Agent in the UI
+python main.py serve    # keep running so runs started from the UI can use the tools
 ```
 
 ### 5. Run the team
@@ -67,6 +68,9 @@ python main.py --agent researcher "How is auth currently implemented?"
 python main.py --agent planner    "Refactor the database layer"
 python main.py --agent coder      "Add input validation to signup"
 python main.py --agent reviewer   "Review the latest changes"
+
+# Work on another project (file tools are confined to this directory)
+python main.py --workdir ~/dev/my-app "Add a /healthz endpoint"
 ```
 
 ## Visual UI
@@ -87,9 +91,13 @@ pytest
 ```
 dev-team-agents/
 ├── agent_span/
-│   ├── agents.py     # all 4 agents + pipeline (researcher >> planner >> coder >> reviewer)
-│   └── tools.py      # shared tools: read_file, write_file, list_files, search_code, run_tests
+│   ├── team.py         # Agentspan team: 4 agents + dev_team pipeline (runs on the server)
+│   ├── tools.py        # shared tools: read_file, write_file, list_files, search_code, run_tests
+│   ├── agents/         # standalone Claude Agent SDK versions of the agents (no server)
+│   ├── base.py
+│   └── orchestrator.py
 ├── tests/
+│   ├── test_agents.py
 │   └── test_tools.py
 ├── main.py           # CLI entry point
 ├── pyproject.toml
